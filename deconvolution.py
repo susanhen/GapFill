@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import numpy as np
-from scipy.linalg import toeplitz
+from scipy.linalg import toeplitz, circulant
 
 def solve_with_options_reduced(A_reduced, b, method):
     def square_A_reduced(A_reduced):
@@ -86,12 +86,15 @@ class Deconvolution:
             observation function consiting of ones and zeros, deconvolution will be active at zeros
         """    
         illu = illu.astype(int) # this operation is important in case illu includes booleans
-        fft_illu = np.fft.fftshift(np.fft.fft(illu))/self.N
+        fft_illu = np.flipud(np.fft.fftshift(np.fft.fft(illu)))/self.N
+        lower_fft_illu = np.zeros(self.N, dtype=complex)
         upper_fft_illu = np.zeros(self.N, dtype=complex)
-        upper_fft_illu[:self.N_half] = fft_illu[self.N_half:]
-        return toeplitz((upper_fft_illu), np.conjugate(upper_fft_illu))
+        upper_fft_illu[:self.N_half] = np.flipud(fft_illu[:self.N_half])
+        lower_fft_illu[:self.N_half+1] = fft_illu[self.N_half-1:]
+        return toeplitz((lower_fft_illu), (upper_fft_illu))
+
         
-    def __plot_spectrum(self, fft_eta_shad, fft_deconv):#TODO make private
+    def __plot_spectrum(self, fft_eta_shad, fft_deconv):
         import pylab
         pylab.plot(abs(fft_eta_shad)**2, label='fft_eta_shad')
         pylab.plot(abs(fft_deconv)**2, label='fft_deconv')
@@ -142,11 +145,13 @@ class Deconvolution:
             set True if all values should be replaced, False means new values are returned only in gaps (default is False)
         """
         A = self.build_convolution_matrix(illu)
-        fft_eta_shad = np.fft.fftshift(np.fft.fft(eta_shad))/self.N
+        fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N
     
         # Reduce matrix            
-        lower_half = np.arange(self.__start, self.N_half-self.N_remove_central)
-        upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.N_cut)
+        #lower_half = np.arange(self.__start, self.N_half-self.N_remove_central)
+        #upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.N_cut)
+        lower_half = np.arange(self.N_cut, self.N_half-self.N_remove_central)
+        upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.__start)
         choose = list(lower_half.copy())        
         choose.extend([self.N_half])
         choose.extend(list(upper_half))
@@ -155,10 +160,13 @@ class Deconvolution:
         # Solve
         fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
         
+        fft_deconv_reduced = np.flipud(fft_deconv_reduced)
+        
         # Merge solution into full system 
         fft_deconv = np.zeros(self.N, dtype=complex)
         N_red_half = len(fft_deconv_reduced) // 2
-        fft_deconv[lower_half] = fft_deconv_reduced[: N_red_half]
+        #fft_deconv[lower_half] = fft_deconv_reduced[: N_red_half]
+        fft_deconv[self.__start:self.N_half-self.N_remove_central] = fft_deconv_reduced[: N_red_half]
         # Ensure symmetric spectrum: TODO: check if improvement is possible here
         fft_deconv[self.N_half+1:] = np.conjugate(np.flipud(fft_deconv[1:self.N_half]))             
 

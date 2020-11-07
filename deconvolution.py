@@ -148,8 +148,6 @@ class Deconvolution:
         fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N
     
         # Reduce matrix            
-        #lower_half = np.arange(self.__start, self.N_half-self.N_remove_central)
-        #upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.N_cut)
         lower_half = np.arange(self.N_cut, self.N_half-self.N_remove_central)
         upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.__start)
         choose = list(lower_half.copy())        
@@ -165,7 +163,6 @@ class Deconvolution:
         # Merge solution into full system 
         fft_deconv = np.zeros(self.N, dtype=complex)
         N_red_half = len(fft_deconv_reduced) // 2
-        #fft_deconv[lower_half] = fft_deconv_reduced[: N_red_half]
         fft_deconv[self.__start:self.N_half-self.N_remove_central] = fft_deconv_reduced[: N_red_half]
         # Ensure symmetric spectrum: TODO: check if improvement is possible here
         fft_deconv[self.N_half+1:] = np.conjugate(np.flipud(fft_deconv[1:self.N_half]))             

@@ -36,6 +36,39 @@ class TestDeconvolution(unittest.TestCase):
         diff = np.abs(b[ind1:ind2] - b_dec[ind1:ind2])**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         self.assertEqual(RMS, RMS_expected)
+        
+    def test_exploit_symmetry(self):
+        a = np.sign(np.sin(self.t))
+        b = np.cos(self.t)
+        fft_a = np.fft.fftshift(np.fft.fft(a))/self.N
+        fft_b = np.fft.fftshift(np.fft.fft(b))/self.N
+        A = self.dec.build_convolution_matrix(a)
+        input_vector = np.flipud(fft_b)
+        
+        N = len(a)
+        N_half = N//2
+        row_indices = list(np.arange(0, N_half))
+        row_indices.extend([N-1])
+        
+        L = A[row_indices, :N_half-1]
+        R = A[row_indices, N_half:-1]
+        C = np.fliplr(R)
+        M = A[row_indices, N_half-1].reshape((len(row_indices), 1))
+        E = A[row_indices, -1].reshape((len(row_indices), 1))
+        u = input_vector[:N_half-1]
+        m = input_vector[N_half-1]
+        e = input_vector[-1]
+        Ax = np.dot(A, input_vector)
+ 
+        mat = np.block([[L.real + C.real, M.real, E.real, -L.imag + C.imag, -M.imag, -E.imag],
+                        [L.imag + C.imag, M.imag, E.imag,  L.real - C.real,  M.real,  E.real]])
+        vec = np.block([u.real, m.real, e.real, u.imag, m.imag, e.imag])
+        conv2 = np.dot(mat, vec)
+        conv_complex = conv2[:N_half+1] + 1j*conv2[N_half+1:]
+        for i in range(0,N_half):
+            self.assertAlmostEqual(conv_complex[i], Ax[i])
+        
+        self.assertAlmostEqual(conv_complex[-1], Ax[-1])
 
 if __name__ == '__main__':
     unittest.main()

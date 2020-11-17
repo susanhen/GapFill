@@ -116,8 +116,8 @@ class Deconvolution:
         """
         A = build_convolution_matrix(illu)
         Nr = len(illu)
-        fft_eta_shad = np.fft.fftshift(np.fft.fft(eta_shad))/self.N
-        fft_deconv = np.linalg.solve(A, fft_eta_shad)            
+        fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N
+        fft_deconv = np.flipud(np.linalg.solve(A, fft_eta_shad))
         eta_deconv = np.real(np.fft.ifft(np.fft.ifftshift(fft_deconv*self.N)))
         eta_deconv[1:Nr] = eta_deconv[1:self.N]
         if replace_all:
@@ -126,7 +126,7 @@ class Deconvolution:
             eta_out = np.where(illu, eta_shad, eta_deconv)
         
         if plot_spec:
-            self.__plot_spectrum(fft_eta_shad, fft_deconv)
+            self.__plot_spectrum(np.flipud(fft_eta_shad), fft_deconv)
             
         return eta_out
 
@@ -146,32 +146,64 @@ class Deconvolution:
         """
         A = self.build_convolution_matrix(illu)
         fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N
-    
-        # Reduce matrix            
-        lower_half = np.arange(self.N_cut, self.N_half-self.N_remove_central)
-        upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.__start)
-        choose = list(lower_half.copy())        
-        choose.extend([self.N_half])
-        choose.extend(list(upper_half))
-        A_reduced = A[:, choose]         
         
-        # Solve
-        fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
+     
+        if 1:
+            # Reduce matrix
+            # Use symmetry
+            row_indices = list(np.arange(0, self.N_half))
+            row_indices.extend([self.N-1])
+            #row_indices = list(np.arange(0, self.N_half-1))
+            L = A[row_indices, self.N_cut:self.N_half-1-self.N_remove_central]
+            C = np.fliplr(A[row_indices, self.N_half+self.N_remove_central:self.N-self.__start])#-1 missing?
+            M = A[row_indices, self.N_half-1].reshape((len(row_indices), 1))
+            E = A[row_indices, -1].reshape((len(row_indices), 1))
+            u = fft_eta_shad[:self.N_half-1]
+            m = fft_eta_shad[self.N_half-1]
+            e = fft_eta_shad[-1]        
+            A_reduced = np.block([[L.real + C.real, M.real, E.real, -L.imag + C.imag, -M.imag, -E.imag],
+                                  [L.imag + C.imag, M.imag, E.imag,  L.real - C.real,  M.real,  E.real]])
+            vec = np.block([u.real, m.real, e.real, u.imag, m.imag, e.imag]) 
+            
+            fft_deconv_reduced = solve_with_options_reduced(A_reduced, vec, self.method)
+            N_red_half = len(fft_deconv_reduced) // 2
+            fft_deconv_reduced = fft_deconv_reduced[:N_red_half] + 1j*fft_deconv_reduced[N_red_half:]
+            fft_deconv_reduced = np.flipud(fft_deconv_reduced)
+            fft_deconv = np.zeros(self.N, dtype=complex)
+            fft_deconv[self.N_half+self.N_remove_central:self.N-self.N_cut-1] = fft_deconv_reduced[1:-1]
+            
+            # Ensure symmetric spectrum: TODO: check if improvement is possible here
+            fft_deconv[1:self.N_half] = np.conjugate(np.flipud(fft_deconv[self.N_half+1:])) 
         
-        fft_deconv_reduced = np.flipud(fft_deconv_reduced)
+        else:#original
+            # Reduce matrix     
+            
         
-        # Merge solution into full system 
-        fft_deconv = np.zeros(self.N, dtype=complex)
-        N_red_half = len(fft_deconv_reduced) // 2
-        fft_deconv[self.__start:self.N_half-self.N_remove_central] = fft_deconv_reduced[: N_red_half]
-        # Ensure symmetric spectrum: TODO: check if improvement is possible here
-        fft_deconv[self.N_half+1:] = np.conjugate(np.flipud(fft_deconv[1:self.N_half]))             
+            lower_half = np.arange(self.N_cut, self.N_half-self.N_remove_central)
+            upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.__start)
+            choose = list(lower_half.copy())        
+            choose.extend([self.N_half])
+            choose.extend(list(upper_half))
+            A_reduced = A[:, choose] 
+        
+            # Solve
+            fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
+            fft_deconv_reduced = np.flipud(fft_deconv_reduced)
+            
+            # Merge solution into full system 
+            fft_deconv = np.zeros(self.N, dtype=complex)
+            N_red_half = len(fft_deconv_reduced) // 2
+            fft_deconv[self.__start:self.N_half-self.N_remove_central] = fft_deconv_reduced[: N_red_half]
+        
+            # Ensure symmetric spectrum: TODO: check if improvement is possible here
+            fft_deconv[self.N_half+1:] = np.conjugate(np.flipud(fft_deconv[1:self.N_half]))             
 
         # From spectral to physical domain
         eta_deconv = np.real(np.fft.ifft(np.fft.ifftshift(fft_deconv*self.N)))
-        eta_deconv[1:self.N] = eta_deconv[1:self.N]
+        #eta_deconv[1:self.N] = eta_deconv[1:self.N]
+        #eta_deconv = np.conjugate(np.flipud(eta_deconv))
         if plot_spec:
-            self.__plot_spectrum(fft_eta_shad, fft_deconv)           
+            self.__plot_spectrum(np.flipud(fft_eta_shad), fft_deconv)           
 
         if replace_all:
             eta_out = eta_deconv

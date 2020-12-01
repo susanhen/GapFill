@@ -12,8 +12,28 @@ def solve_with_options_reduced(A_reduced, b, method):
         
     method_dict = { 'solve': np.linalg.solve(square_A_reduced(A_reduced), square_b(A_reduced,b)),
                     'lstsq': np.linalg.lstsq(A_reduced ,b, rcond=0.2)[0]}
-    return method_dict.get(method)  
-
+    return method_dict.get(method)    
+    
+def select_indices(w, w1, w2, w0):  
+    N = len(w)
+    N_lower_cut_off = np.max([np.argmin(abs(w[N//2:] - w1)), 1])    
+    if w2<w[-1]:
+        last_ind = np.argwhere(w>w2)[0][0] - 1
+        N_upper_cut_off = N - last_ind    
+    else:
+        N_upper_cut_off = 0
+    selected_indices = list(np.arange(N_upper_cut_off, N//2-1-N_lower_cut_off)) 
+    refill_selected_indices = list(np.arange(N_upper_cut_off, N//2-1-N_lower_cut_off)) 
+    if w0:      
+        selected_indices.extend([N//2-1])
+        refill_selected_indices.extend([N//2-1])
+    selected_indices.extend(list(np.arange(N//2 + N_lower_cut_off, N-1-N_upper_cut_off)))     
+    if w0: # to allow even number of columns in matrix
+        selected_indices.extend([N-1])
+        refill_selected_indices.extend([N-1])
+        
+    return selected_indices, refill_selected_indices
+    
     
 class Deconvolution:
     """
@@ -31,10 +51,10 @@ class Deconvolution:
         half the length of measurement and time array
     w : array
         frequency array for t
-    N_remove_central : int
+    N_upper_cut_off_off : int
         the number of points to be removed in the center of the 
         frequency spectrum (symmetrically on both sides)
-    N_cut : int
+    N_upper_cut_off : int
         the number of points above the cut of frequency
     method : string
         method for solving deconvolution options: 'solve', 'lstsq'
@@ -50,7 +70,7 @@ class Deconvolution:
         interpolates the missing points by reducing the matrix
     """
     
-    def __init__(self, t, w1, w2, method='solve'):   
+    def __init__(self, t, w1, w2, w0=False, method='solve'):   
     
         """
         Parameters
@@ -71,12 +91,47 @@ class Deconvolution:
         wmin = -np.pi/dt
         dw = 2*np.pi/(dt*self.N)        
         self.w = wmin + dw*np.arange(0,self.N)
-        self.N_remove_central = np.max([np.argmin(abs(self.w[self.N//2:] - w1)), 1])    
-        last_ind = np.argwhere(self.w>w2)[0][0] - 1
-        self.N_cut = self.N - last_ind    
+        if w2>self.w[-1]:
+            w2 = self.w[-1]
+            print("w2 was set to {0:.4f}, input value was too large".format(self.w[-1]))
+        if w2<w1:
+            w2 = self.w[-1]
+            print("w2 was set to {0:.4f}, since given w2<w1".format(self.w[-1]))
+            
+        if w1<0:
+            w1 = 0
+            print("w2 was set to 0, since the w1 was given with a negative value".format(self.w[-1]))
+      
+        self.selected_indices, self.refill_selected_indices = select_indices(self.w, w1, w2, w0)
+        
+        if w0:
+            self.block_parameter = 'with_center'
+        else:
+            self.block_parameter = 'without_center'
+        
+        
         self.method=method      
-        self.__start = int(self.N_remove_central>0) + self.N_cut
-                   
+     
+    def __define_block_matrix(self, A_reduced):
+        N_rows, N_cols = A_reduced.shape
+        def block_matrix_with_center(A_reduced):
+            L = A_reduced[:, :N_cols//2-1]
+            C = np.flipud(A_reduced[:, N_cols//2:-1])
+            M = (A_reduced[:, N_cols//2-1]).reshape((N_rows, 1))
+            E = (A_reduced[:, -1]).reshape((N_rows, 1))
+            B = np.block([[L.real + C.real, M.real, E.real, -L.imag + C.imag, -M.imag, -E.imag],
+                          [L.imag + C.imag, M.imag, E.imag,  L.real - C.real,  M.real,  E.real]])
+            return B
+                             
+        def block_matrix_without_center(A_reduced):            
+            L = A_reduced[:, :N_cols//2]
+            C = np.fliplr(A_reduced[:, N_cols//2:])
+            B = np.block([[L.real + C.real, -L.imag + C.imag],
+                          [L.imag + C.imag, L.real - C.real]])
+            return B                    
+        block_dict = { 'with_center': block_matrix_with_center(A_reduced),
+                       'without_center': block_matrix_without_center(A_reduced)}                 
+        return block_dict.get(self.block_parameter)                      
         
     def build_convolution_matrix(self, illu):    
         """
@@ -129,9 +184,58 @@ class Deconvolution:
             self.__plot_spectrum(np.flipud(fft_eta_shad), fft_deconv)
             
         return eta_out
-
-
+        
+        
     def interpolate(self, eta_shad, illu, plot_spec=False, replace_all=False):  
+        """
+        Parameters
+        ----------
+        eta_shad : array
+            data with invalid points (the invalid points will be set to zero)
+        illu : array
+            observation function consiting of ones and zeros, deconvolution will be active at zeros
+        plot_spec : bool, optional
+            set true to plot the spectra before and after deconvolution (default is False)
+        replace_all : bool, optional
+            set True if all values should be replaced, False means new values are returned only in gaps (default is False)
+        """
+        A = self.build_convolution_matrix(illu)
+        fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N        
+        
+        # Reduce matrix
+        A_reduced = A[:, self.selected_indices] 
+        
+        # decompose complex system into real system
+        B = self.__define_block_matrix(A_reduced)
+        vec = np.block([fft_eta_shad.real, fft_eta_shad.imag]) 
+        fft_deconv_reduced = solve_with_options_reduced(B, vec, self.method)
+        
+        # compose complex coefficients
+        N_red_half = len(fft_deconv_reduced) // 2
+        fft_deconv_reduced = fft_deconv_reduced[:N_red_half] + 1j*fft_deconv_reduced[N_red_half:]
+        
+        # synthesize coefficient vector from reduced coefficient vector
+        fft_deconv = np.zeros(self.N, dtype=complex)
+        fft_deconv[self.refill_selected_indices] = fft_deconv_reduced
+        fft_deconv[self.N_half:-1] = np.conjugate(np.flipud(fft_deconv[:self.N_half-1])) 
+
+        # revert initial flip
+        fft_deconv = np.flipud(fft_deconv) 
+        
+        # From spectral to physical domain
+        eta_deconv = np.real(np.fft.ifft(np.fft.ifftshift(fft_deconv*self.N)))        
+        
+        if plot_spec:
+            self.__plot_spectrum(np.flipud(fft_eta_shad), fft_deconv)           
+
+        if replace_all:
+            eta_out = eta_deconv
+        else:
+            eta_out = np.where(illu, eta_shad, eta_deconv)
+        return eta_out
+
+
+    def interpolate_non_symmetric(self, eta_shad, illu, plot_spec=False, replace_all=False):  
         """
         Parameters
         ----------
@@ -147,61 +251,21 @@ class Deconvolution:
         A = self.build_convolution_matrix(illu)
         fft_eta_shad = np.flipud(np.fft.fftshift(np.fft.fft(eta_shad)))/self.N
         
-     
-        if 1:
-            # Reduce matrix
-            # Use symmetry
-            row_indices = list(np.arange(0, self.N_half))
-            row_indices.extend([self.N-1])
-            #row_indices = list(np.arange(0, self.N_half-1))
-            L = A[row_indices, self.N_cut:self.N_half-1-self.N_remove_central]
-            C = np.fliplr(A[row_indices, self.N_half+self.N_remove_central:self.N-self.__start])#-1 missing?
-            M = A[row_indices, self.N_half-1].reshape((len(row_indices), 1))
-            E = A[row_indices, -1].reshape((len(row_indices), 1))
-            u = fft_eta_shad[:self.N_half-1]
-            m = fft_eta_shad[self.N_half-1]
-            e = fft_eta_shad[-1]        
-            A_reduced = np.block([[L.real + C.real, M.real, E.real, -L.imag + C.imag, -M.imag, -E.imag],
-                                  [L.imag + C.imag, M.imag, E.imag,  L.real - C.real,  M.real,  E.real]])
-            vec = np.block([u.real, m.real, e.real, u.imag, m.imag, e.imag]) 
-            
-            fft_deconv_reduced = solve_with_options_reduced(A_reduced, vec, self.method)
-            N_red_half = len(fft_deconv_reduced) // 2
-            fft_deconv_reduced = fft_deconv_reduced[:N_red_half] + 1j*fft_deconv_reduced[N_red_half:]
-            fft_deconv_reduced = np.flipud(fft_deconv_reduced)
-            fft_deconv = np.zeros(self.N, dtype=complex)
-            fft_deconv[self.N_half+self.N_remove_central:self.N-self.N_cut-1] = fft_deconv_reduced[1:-1]
-            
-            # Ensure symmetric spectrum: TODO: check if improvement is possible here
-            fft_deconv[1:self.N_half] = np.conjugate(np.flipud(fft_deconv[self.N_half+1:])) 
+        # Reduce matrix    
+        A_reduced = A[:, self.selected_indices]         
+    
+        # Solve
+        fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
         
-        else:#original
-            # Reduce matrix     
+        # Merge solution into full system 
+        fft_deconv = np.zeros(self.N, dtype=complex)
+                
+        fft_deconv[self.selected_indices] = fft_deconv_reduced
+        fft_deconv = np.flipud(fft_deconv) # revert initial flip
             
-        
-            lower_half = np.arange(self.N_cut, self.N_half-self.N_remove_central)
-            upper_half = np.arange(self.N_half+1+(self.N_remove_central), self.N-self.__start)
-            choose = list(lower_half.copy())        
-            choose.extend([self.N_half])
-            choose.extend(list(upper_half))
-            A_reduced = A[:, choose] 
-        
-            # Solve
-            fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
-            fft_deconv_reduced = np.flipud(fft_deconv_reduced)
-            
-            # Merge solution into full system 
-            fft_deconv = np.zeros(self.N, dtype=complex)
-            N_red_half = len(fft_deconv_reduced) // 2
-            fft_deconv[self.__start:self.N_half-self.N_remove_central] = fft_deconv_reduced[: N_red_half]
-        
-            # Ensure symmetric spectrum: TODO: check if improvement is possible here
-            fft_deconv[self.N_half+1:] = np.conjugate(np.flipud(fft_deconv[1:self.N_half]))             
-
         # From spectral to physical domain
         eta_deconv = np.real(np.fft.ifft(np.fft.ifftshift(fft_deconv*self.N)))
-        #eta_deconv[1:self.N] = eta_deconv[1:self.N]
-        #eta_deconv = np.conjugate(np.flipud(eta_deconv))
+        
         if plot_spec:
             self.__plot_spectrum(np.flipud(fft_eta_shad), fft_deconv)           
 
@@ -210,6 +274,8 @@ class Deconvolution:
         else:
             eta_out = np.where(illu, eta_shad, eta_deconv)
         return eta_out
+
+
         
 if __name__ == '__main__':
     import pylab as plt

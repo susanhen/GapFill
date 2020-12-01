@@ -294,30 +294,29 @@ if __name__ == '__main__':
     N_modes = 20
     b = 0.775
     phi = np.random.uniform(0,2*np.pi, N_modes)
-    r = np.linspace(100, 2100, N)
+    t = np.linspace(100, 2100, N)
     k = np.linspace(0.01, 0.2, N_modes) 
     x = np.linspace(-1,5, N_modes)
     amp = rice.pdf(x, b)
-    eta = np.dot(amp, np.sin(np.outer(k, r) + np.outer(phi, np.ones(len(r))) ))
+    eta = np.dot(amp, np.sin(np.outer(k, t) + np.outer(phi, np.ones(len(t))) ))
 
     # define random masks  
     N_gaps = 15
     mean_gap_length = 8
     illu = construct_mask(N, N_gaps, mean_gap_length)    
 
-    
     w1 = 0.02
     w2 = 0.16
-    Dec = Deconvolution(r, w1, w2)
+    Dec = Deconvolution(t, w1, w2)
     
     
     eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=True)
     
     # plot result
     plt.figure()
-    plt.plot(r, eta, 'k', label='original')
-    plt.plot(r, illu, ':k', label='observation function')
-    plt.plot(r, eta_dec, 'r--', label='deconvolved')
+    plt.plot(t, eta, 'k', label='original')
+    plt.plot(t, illu, ':k', label='observation function')
+    plt.plot(t, eta_dec, 'r--', label='deconvolved')
     plt.ylim([-3.,3.])
     gap_indices = np.argwhere(illu).transpose()[0]
     RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))

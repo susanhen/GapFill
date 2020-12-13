@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-from deconvolution import DeconvolutionSetup, DataOrganizer
+from deconvolution import DeconvolutionSetup, DeconvolutionFramework
 
 
 class TestDeconvolution(unittest.TestCase):
@@ -56,7 +56,7 @@ class TestDeconvolution(unittest.TestCase):
         self.assertEqual(RMS, RMS_expected)
 
 
-class TestDataOrganizer(unittest.TestCase): 
+class TestDeconvolutionFramework(unittest.TestCase): 
  
     def setUp(self):  
         self.N = 200
@@ -71,40 +71,38 @@ class TestDataOrganizer(unittest.TestCase):
         ind2 = int(0.52*self.N)
         self.m[ind1:ind2] = 0
         self.N_intervals = 2
-        self.data_organizer = DataOrganizer(self.t, self.y*self.m, self.m, self.N_intervals)    
+        self.dec_framework = DeconvolutionFramework(self.t, self.y*self.m, self.m, self.N_intervals, plot_it=False)    
         
     def test_data_chopping(self):
-        N_int = self.data_organizer.N_intervals
-        N_per_int = self.data_organizer.N_per_interval
+        N_int = self.dec_framework.N_intervals
+        N_per_int = self.dec_framework.N_per_interval
         start1_compare = 0
         start2_compare = N_per_int//2
         for i in range(0, N_int-1):            
-            start1 = self.data_organizer.start_points1[i]
+            start1 = self.dec_framework.start_points1[i]
             self.assertEqual(start1, start1_compare)
             start1_compare += N_per_int
-            end1 = self.data_organizer.end_points1[i]
+            end1 = self.dec_framework.end_points1[i]
             self.assertEqual(start1_compare, end1)
             
-            start2 = self.data_organizer.start_points2[i]            
+            start2 = self.dec_framework.start_points2[i]            
             self.assertEqual(start2, start2_compare)
             start2_compare += N_per_int
-            end2 = self.data_organizer.end_points2[i]
+            end2 = self.dec_framework.end_points2[i]
             self.assertEqual(start2_compare, end2)            
                     
-        start1 = self.data_organizer.start_points1[-1]
+        start1 = self.dec_framework.start_points1[-1]
         self.assertEqual(start1, start1_compare)
         start1_compare += N_per_int
-        end1 = self.data_organizer.end_points1[-1]
+        end1 = self.dec_framework.end_points1[-1]
         self.assertEqual(start1_compare, end1)
-        self.data_organizer.plot_spec_limits() 
         
     def test_deconvolution(self):
-        dec = self.data_organizer.deconvolve()
-        import pylab as plt
-        plt.plot(dec)
-        plt.plot(self.y)
-        plt.plot(self.m)
-        plt.show()
+        dec = self.dec_framework.deconvolve()
+        diff = np.abs(dec - self.y)**2
+        RMS = np.round(np.sqrt(np.mean(diff)), 6)
+        RMS_expected = 0.004085
+        self.assertEqual(RMS, RMS_expected)  
         
             
        

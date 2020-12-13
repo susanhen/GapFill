@@ -49,20 +49,24 @@ def spectral2grid(k):
     x = np.arange(0,N)*dx
     return x
 
-def suggest_band_limitation(t, y, mask, plot_it=True):
+def suggest_band_limitation(t, y, mask, plot_it):
     N = len(t)
     w = grid2spectral(t)
     fft_y_mask = np.fft.fftshift(np.fft.fft(y*mask))
     Sp = np.abs(fft_y_mask[N//2:])**2
     ind_max = np.argmax(Sp)
     E_tot = np.sum(Sp)
-    ind1 = (N//2 + 1 )+ np.argwhere(Sp[1:] > 0.001*E_tot)[0]
-    ind2 = (N//2 + ind_max) + np.argwhere(Sp[ind_max:] > 0.001*E_tot)[-1]
+    ind1 = (N//2 + 1 )+ np.argwhere(Sp[1:] > 0.005*E_tot)[0]
+    ind2 = (N//2 + ind_max) + np.argwhere(Sp[ind_max:] > 0.005*E_tot)[-1]
     if plot_it:
-        import pylab as plt
+        import pylab as plt   
+        plt.figure()
+        plt.title('Spectral coefficients with w1 and w2')
         plt.plot(w[N//2:], Sp/np.max(Sp), color='b', linestyle='-', marker='+')
-        plt.plot([w[ind1], w[ind1]], [0,1.1], 'k:')  
-        plt.plot([w[ind2], w[ind2]], [0,1.1], 'k:')           
+        plt.plot([w[ind1], w[ind1]], [0,1.1], 'k:') 
+        plt.text(w[ind1], 0.9, r'$\omega_1$', {'color': 'k', 'fontsize': 16}) #
+        plt.plot([w[ind2], w[ind2]], [0,1.1], 'k:')   
+        plt.text(w[ind2], 0.9, r'$\omega_2$', {'color': 'k', 'fontsize': 16})        
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$S/S_p(\omega)$')
         plt.show()
@@ -325,7 +329,7 @@ class DeconvolutionSetup:
 
 
 
-class DataOrganizer:
+class DeconvolutionFramework:
     '''
     Class to organize data for deconvolution.
     The deconvolution for large datasets should be preformed on chunks.
@@ -343,7 +347,9 @@ class DataOrganizer:
                     Mask the gaps in y
     N              : int
                     Number of points
-    N_per interval : int
+    N_intervals    : int
+                    Number of intervals
+    N_per_interval : int
                     Number of points per interval                    
     start_points1  : array 
                     Start points of intervals
@@ -358,24 +364,63 @@ class DataOrganizer:
     end_preplace   : array 
                     End points of intervals for replacing set1 by set2
     '''
-    def __init__(self, t, y, m, N_intervals):
+    def __init__(self, t, y, m, N_intervals=1, plot_it=True):
+        '''
+        Parameters:
+        ----------- 
+        t              : array
+                        Timeline for measurements
+        y              : array
+                        Measurements  along the timeline
+        m              : array
+                        Mask the gaps in y
+        N_intervals    : int
+                        Number of intervals
+        plot_it        : bool
+                        switch to plot the spectral coefficients with 
+                        the initially calculated w1 and w2        
+        '''
+        found = False
+        changed = False
         self.N_intervals = N_intervals
-        interval_mod = np.mod(len(y), N_intervals)
-        self.stop_index = len(y) # index for undoing increase in size due to intervals        
-
-        if interval_mod != 0:
-            interval_mod = np.mod(len(y), N_intervals-1)
-            self.N_per_interval = (len(y) - interval_mod)//(N_intervals-1)
-            self.y = np.block([y, np.zeros(self.N_per_interval)])
-            self.m = np.block([m, np.zeros(self.N_per_interval)])
+        while not found:
+            
+            interval_mod = np.mod(len(y), self.N_intervals)
+            self.stop_index = len(y) # index for undoing increase in size due to intervals        
+            
+            # Create N_intervals intervals of equal length
+            # If necessary fill up data with zeros
+            if interval_mod != 0:
+                interval_mod = np.mod(len(y), self.N_intervals-1)
+                self.N_per_interval = (len(y) - interval_mod)//(self.N_intervals-1)
+                self.y = np.block([y, np.zeros(self.N_per_interval-interval_mod)])
+                self.m = np.block([m, np.zeros(self.N_per_interval-interval_mod)])
+            else:
+                self.N_per_interval = len(y)//self.N_intervals
+                self.y = y
+                self.m = m
+            # Ensure that self.N_per_interval is an even number, if not fill up data accordingly
+            if (np.mod(self.N_per_interval, 2)!=0):
+                
+                self.N_per_interval += 1
+                self.y = np.block([self.y, np.zeros(self.N_intervals)])
+                self.m = np.block([self.m, np.zeros(self.N_intervals)])
             dt = t[1] - t[0]
-            self.t = np.arange(0, len(y)) * dt
-        else:
-            self.N_per_interval = len(y)//N_intervals
-            self.y = y
-            self.m = m
-            self.t = t
-        self.N = len(self.y)
+            self.t = np.arange(0, len(self.y)) * dt  
+            self.N = len(self.y)      
+            
+            # if only few points are shifted to the last interval the number of intervals is decreased
+            if ((self.N - len(y)) > self.N_per_interval//2):
+                self.N_intervals -= 1
+                changed = True
+            else:
+                found = True              
+                
+        if changed:
+            print('\nWarning:\nUnsuitable N_intervals provided, automatically changed to {0:d}.'.format(self.N_intervals))
+            
+            
+        # Calculate indices for overlapping windows
         self.start_points1 = np.arange(0, self.N_intervals)*self.N_per_interval
         self.end_points1 = np.block([self.start_points1[1:], self.N])
         if N_intervals>1:
@@ -386,66 +431,41 @@ class DataOrganizer:
         else:
             self.start_points2 = []
         self.w_interval = grid2spectral(t[:self.N_per_interval])
-        self.w1, self.w2 = suggest_band_limitation(t, y, m)
+        self.w1, self.w2 = suggest_band_limitation(t, y, m, plot_it)
         
     def deconvolve(self, w0=False, method='solve', plot_spec=False, replace_all=False):
-        # deconvolve first set of intervals
         t_local = self.t[0: self.N_per_interval]
         w_local = grid2spectral(t_local)        
         y_dec = np.zeros(self.N)
         dec_setup = DeconvolutionSetup(w_local, self.w1, self.w2, w0, method)
         ind = self.N_per_interval//4
         
+        # deconvolve first set of intervals
         for i in range(0, len(self.start_points1)):
             y_local = self.y[self.start_points1[i]: self.end_points1[i]]
             m_local = self.m[self.start_points1[i]: self.end_points1[i]]
-
-            #TODO: check below
-            #y_local -= np.mean(y_local[np.argwhere(m_local==1)])#CHECKTHIS!!!
             y_dec[self.start_points1[i]:self.end_points1[i]] = dec_setup.interpolate(y_local, m_local, plot_spec, replace_all)
-    
+            
+        # deconvolve second set of intervals
         for i in range(0,len(self.start_points2)):
             y_local = self.y[self.start_points2[i]: self.end_points2[i]]
             m_local = self.m[self.start_points2[i]: self.end_points2[i]]
-
-            #TODO: check below
-            #y_local -= np.mean(y_local[np.argwhere(m_local==1)])#CHECKTHIS!!!
             dec_hold = dec_setup.interpolate(y_local, m_local, plot_spec, replace_all)
-
             N_replace = self.end_replace[i]-self.start_replace[i]
             y_dec[self.start_replace[i]:self.end_replace[i]] = dec_hold[ind:ind+N_replace]
         
-        return y_dec
-    
-        
-    def plot_data_all(self, fn='test_plot', save=False):
-        self.plot_data(0, self.N, fn, save)        
-    
-    def plot_data(self, start_index, stop_index, fn='test_plot', save=False):
-        t_sub = self.t[start_index:stop_index]
-        import pylab as plt
-        plt.figure(figsize=(10,4))
-        plt.plot(t_sub, self.y[start_index:stop_index], '-', color='navy', label='measured')
-        #plt.plot(t_sub, data_spl[start_point:end_point], '--', color='orchid', label=r'$\mathrm{interpol}$')
-        #plt.plot(t_sub, data_dec[start_point:end_point], '-.', color='darkorange', label=r'$\mathrm{deconvolved}$')
-        plt.plot(t_sub, self.m[start_index:stop_index], 'k:', label='error marker')
-        plt.ylabel(r'$\eta~[m]$')
-        plt.xlabel(r'$t~[s]$')
-        plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=4, mode="expand", borderaxespad=0.)   
-        if save:
-            plt.savefig('{0:s}.pdf'.format(fn), bbox_inches='tight')
-        plt.show()
+        return y_dec[:self.stop_index]       
+
         
     def plot_spec_limits(self):
-        import pylab as plt
-        import matplotlib as mpl
-        #from matplotlib.texmanager import TexManager
-        #mpl.rcParams['text.usetex'] = True  
-        plt.figure(figsize=(5,5))
         fft_y_m = np.fft.fftshift(np.fft.fft(self.y*self.m))
         Sp = np.abs(fft_y_m[self.N//2:])**2
         Sp_max = np.max(Sp)
         w = grid2spectral(self.t)
+        import pylab as plt
+        import matplotlib as mpl 
+        plt.figure(figsize=(7,5))
+        plt.title('Spectral coefficients with w1 and w2')
         plt.plot(w[self.N//2:], Sp/Sp_max, label=r'$\hat{\eta}_{\mathrm{measured and masked}}$', color='b', linestyle='-', marker='+')
         plt.plot([self.w1, self.w1], [0,1.1], 'k:')  
         plt.plot([self.w2, self.w2], [0,1.1], 'k:')           
@@ -472,9 +492,24 @@ if __name__ == '__main__':
         for i in range(0, N_gaps):
            illu[start_indices[i]:start_indices[i]+int(np.random.normal(mean_length, 2))] = 0
         return illu  
+        
+    def plot_comparison(eta, illu, eta_dec):
+        plt.figure()
+        plt.plot(t, eta, 'k', label='original')
+        plt.plot(t, illu, ':k', label='observation function')
+        plt.plot(t, eta_dec, 'r--', label='deconvolved')
+        plt.ylim([-3.,3.])
+        gap_indices = np.argwhere(illu).transpose()[0]
+        #RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))
+        RMS_by_sig = np.sqrt(np.mean((eta - eta_dec)**2)) / np.sqrt(np.var(eta))
+        plt.text(100, -2.6, r'RMS/sigma = {0:1.8f}'.format(RMS_by_sig),
+             {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
+              'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
+        plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
+
 
     # define wave
-    N = 390          
+    N = 400 
     N_modes = 20
     b = 0.775
     phi = np.random.uniform(0,2*np.pi, N_modes)
@@ -489,27 +524,23 @@ if __name__ == '__main__':
     mean_gap_length = 8
     illu = construct_mask(N, N_gaps, mean_gap_length)    
 
+    # use deconvolution directly
     dt = abs(t[-1]-t[-2])    
     wmin = -np.pi/dt
     dw = 2*np.pi/(dt*N)        
     w = wmin + dw*np.arange(0, N)
     w1 = 0.02
     w2 = 0.16
-    Dec = DeconvolutionSetup(w, w1, w2)
+    Dec = DeconvolutionSetup(w, w1, w2)      
+    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
+    plot_comparison(eta, illu, eta_dec)
     
-    
-    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=True)
-    
-    # plot result
-    plt.figure()
-    plt.plot(t, eta, 'k', label='original')
-    plt.plot(t, illu, ':k', label='observation function')
-    plt.plot(t, eta_dec, 'r--', label='deconvolved')
-    plt.ylim([-3.,3.])
-    gap_indices = np.argwhere(illu).transpose()[0]
-    RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))
-    plt.text(100, -2.6, r'RMS/sigma = {0:1.3f}'.format(RMS_by_sig),
-         {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
-          'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
-    plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
+    # Use DeconvolutionFramework
+    N_intervals = 2
+    dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
+    dec_framework.reset_w1(0.02) 
+    dec_framework.reset_w2(0.16)
+    eta_dec2 = dec_framework.deconvolve()
+    plot_comparison(eta, illu, eta_dec2)
+        
     plt.show()

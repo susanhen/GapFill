@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import unittest
 import numpy as np
 from deconvolution import DeconvolutionSetup, DeconvolutionFramework
@@ -101,7 +103,7 @@ class TestDeconvolutionFramework(unittest.TestCase):
         dec = self.dec_framework.deconvolve()
         diff = np.abs(dec - self.y)**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
-        RMS_expected = 0.004085
+        RMS_expected = 0.005964
         self.assertEqual(RMS, RMS_expected)    
 
 if __name__ == '__main__':

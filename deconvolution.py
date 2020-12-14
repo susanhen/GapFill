@@ -1,9 +1,104 @@
-#!/usr/bin/env python
+"""
+Object for dealing with deconvolution - deconvolution.py
+
+This module provides functionality to remove gaps in 1D data by deconvolution.
+
+Reference:
+----------
+Susanne Stole-Hentschel, Jose Carlos Nieto Borge, Karsten Trulsen,
+The deconvolution as a method to deal with gaps in ocean wave measurements,
+Ocean Engineering,
+2020,
+108373,
+ISSN 0029-8018,
+https://doi.org/10.1016/j.oceaneng.2020.108373.
+(http://www.sciencedirect.com/science/article/pii/S0029801820312804)
+Abstract: This work introduces the deconvolution as a technique to reconstruct missing information in data. While the method was originally developed for ocean waves, it will be useful in a wider range of applications where gaps in data may alter the statistics or spikes have to be eliminated without removing extreme values. For the application to ocean waves, it is estimated that gaps as long as half of the peak period may be reconstructed well. It is possible to reconstruct data of longer gaps, however, in total the amount of missing points should be less than 50 per cent of all points and the missing data should not be clustered.
+Keywords: Reconstruction of missing data; Interpolation; Deconvolution; Removal of spikes
+
+Implementation:
+---------------
+There are two options to apply the deconvolution:
+
+1. Deconvolution Framework
+    The framework enables the user to feed a large dataset. This is then deconvolved on subintervals. The number of intervals can be provided to the framework. The framework automatically calculates a band limitation for which the deconvolution can be conducted. This band limitation should preferably be adapted.
+    
+2. Deconvolution Setup
+    The Deconvolution setup contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
+
+Examples:
+---------
+Creation of data (eta) :
+    # define wave
+    N = 400 
+    N_modes = 20
+    b = 0.775
+    phi = np.random.uniform(0,2*np.pi, N_modes)
+    t = np.linspace(100, 2100, N)
+    k = np.linspace(0.01, 0.2, N_modes) 
+    x = np.linspace(-1,5, N_modes)
+    amp = rice.pdf(x, b)
+    eta = np.dot(amp, np.sin(np.outer(k, t) + np.outer(phi, np.ones(len(t))) ))
+
+Definition of a mask:
+    def construct_mask(N, N_gaps, mean_length):
+        illu = np.ones(N)
+        # vary position of start indices around a uniform grid based on uniform distribution
+        start_indices =  np.arange(1,N+1)*int(N/(N_gaps+2))+ int(np.random.uniform(0.05*N))
+        for i in range(0, N_gaps):
+           illu[start_indices[i]:start_indices[i]+int(np.random.normal(mean_length, 2))] = 0
+        return illu  
+
+    # define random masks  
+    N_gaps = 15
+    mean_gap_length = 8
+    illu = construct_mask(N, N_gaps, mean_gap_length)    
+
+   
+Function for plotting results:        
+    def plot_comparison(eta, illu, eta_dec):
+        plt.figure(figsize=(8,4))
+        plt.plot(t, eta, 'k', label='original')
+        plt.plot(t, illu, ':k', label='observation function')
+        plt.plot(t, eta_dec, 'r--', label='deconvolved')
+        plt.ylabel(r'$\eta~[m]$')
+        plt.xlabel(r'$t~[s]$')
+        plt.ylim([-3.,3.])
+        gap_indices = np.argwhere(illu==0).transpose()[0]
+        RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))
+        plt.text(100, -2.6, r'RMS/$\sigma$ = {0:1.8f}'.format(RMS_by_sig),
+             {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
+              'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
+        plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
+
+Application of the Deconvolution Framework:
+    N_intervals = 2
+    dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
+    dec_framework.reset_w1(0.02) 
+    dec_framework.reset_w2(0.16)
+    eta_dec2 = dec_framework.deconvolve()
+    plot_comparison(eta, illu, eta_dec2)
+
+
+Application of the Deconvolution Setup:
+    w = grid2spectral(t)
+    w1 = 0.02
+    w2 = 0.16
+    Dec = DeconvolutionSetup(w, w1, w2)      
+    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
+    plot_comparison(eta, illu, eta_dec)
+"""
+# Created by Susane Stole-Hentschel, December, 2020
+
+__all__ = [ 'grid2spectral', 
+            'suggest_band_limitation', 
+            'DeconvolutionSetup',
+            'DeconvolutionFramework']
 
 import numpy as np
 from scipy.linalg import toeplitz
 
-def solve_with_options_reduced(A_reduced, b, method):
+def _solve_with_options_reduced(A_reduced, b, method):
     def square_A_reduced(A_reduced):
         return np.dot(np.conjugate(np.transpose(A_reduced)),A_reduced )        
         
@@ -14,7 +109,7 @@ def solve_with_options_reduced(A_reduced, b, method):
                     'lstsq': np.linalg.lstsq(A_reduced ,b, rcond=0.2)[0]}
     return method_dict.get(method)    
     
-def select_indices(w, w1, w2, w0):  
+def _select_indices(w, w1, w2, w0):  
     N = len(w)
     N_lower_cut_off = np.max([np.argmin(abs(w[N//2:] - w1)), 1])    
     if w2<w[-1]:
@@ -42,13 +137,6 @@ def grid2spectral(grid):
     k = kmin + dk*np.arange(0,N)
     return k
     
-def spectral2grid(k):   
-    dk = abs(k[-1]-k[-2])
-    N = len(k)
-    dx = 2*np.pi/(dk*N)
-    x = np.arange(0,N)*dx
-    return x
-
 def suggest_band_limitation(t, y, mask, plot_it):
     N = len(t)
     w = grid2spectral(t)
@@ -61,12 +149,12 @@ def suggest_band_limitation(t, y, mask, plot_it):
     if plot_it:
         import pylab as plt   
         plt.figure()
-        plt.title('Spectral coefficients with w1 and w2')
+        plt.title('Spectral coefficients with initial $\omega_1$ and $\omega_2$')
         plt.plot(w[N//2:], Sp/np.max(Sp), color='b', linestyle='-', marker='+')
         plt.plot([w[ind1], w[ind1]], [0,1.1], 'k:') 
-        plt.text(w[ind1], 0.9, r'$\omega_1$', {'color': 'k', 'fontsize': 16}) #
+        plt.text(w[ind1], 1.05, r'$\omega_1$', {'color': 'k', 'fontsize': 14}) #
         plt.plot([w[ind2], w[ind2]], [0,1.1], 'k:')   
-        plt.text(w[ind2], 0.9, r'$\omega_2$', {'color': 'k', 'fontsize': 16})        
+        plt.text(w[ind2], 1.05, r'$\omega_2$', {'color': 'k', 'fontsize': 14})        
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$S/S_p(\omega)$')
         plt.show()
@@ -136,7 +224,7 @@ class DeconvolutionSetup:
             w1 = 0
             print("w2 was set to 0, since the w1 was given with a negative value".format(self.w[-1]))
       
-        self.selected_indices, self.refill_selected_indices = select_indices(self.w, w1, w2, w0)
+        self.selected_indices, self.refill_selected_indices = _select_indices(self.w, w1, w2, w0)
         
         if w0:
             self.block_parameter = 'with_center'
@@ -252,7 +340,7 @@ class DeconvolutionSetup:
         # decompose complex system into real system
         B = self.__define_block_matrix(A_reduced)
         vec = np.block([fft_eta_shad.real, fft_eta_shad.imag]) 
-        fft_deconv_reduced = solve_with_options_reduced(B, vec, self.method)
+        fft_deconv_reduced = _solve_with_options_reduced(B, vec, self.method)
         
         # compose complex coefficients
         N_red_half = len(fft_deconv_reduced) // 2
@@ -304,7 +392,7 @@ class DeconvolutionSetup:
         A_reduced = A[:, self.selected_indices]         
     
         # Solve
-        fft_deconv_reduced = solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
+        fft_deconv_reduced = _solve_with_options_reduced(A_reduced, fft_eta_shad, self.method)
         
         # Merge solution into full system 
         fft_deconv = np.zeros(self.N, dtype=complex)
@@ -462,12 +550,12 @@ class DeconvolutionFramework:
         import matplotlib as mpl 
         plt.figure(figsize=(7,5))
         plt.title('Spectral coefficients with w1 and w2')
-        plt.plot(w[self.N//2:], Sp/Sp_max, label=r'$\hat{\eta}_{\mathrm{measured and masked}}$', color='b', linestyle='-', marker='+')
+        plt.plot(w[self.N//2:], Sp/Sp_max, color='r')
         plt.plot([self.w1, self.w1], [0,1.1], 'k:')  
         plt.plot([self.w2, self.w2], [0,1.1], 'k:')           
         plt.legend()
         plt.xlabel(r'$\omega$')
-        plt.ylabel(r'$S/S_p(f)$')
+        plt.ylabel(r'$\mathrm{S}/\mathrm{S}_p(f)$')
         plt.show()  
         
     def reset_w1(self, w1):
@@ -491,15 +579,16 @@ if __name__ == '__main__':
         return illu  
         
     def plot_comparison(eta, illu, eta_dec):
-        plt.figure()
+        plt.figure(figsize=(8,4))
         plt.plot(t, eta, 'k', label='original')
         plt.plot(t, illu, ':k', label='observation function')
         plt.plot(t, eta_dec, 'r--', label='deconvolved')
+        plt.ylabel(r'$\eta~[m]$')
+        plt.xlabel(r'$t~[s]$')
         plt.ylim([-3.,3.])
-        gap_indices = np.argwhere(illu).transpose()[0]
-        #RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))
-        RMS_by_sig = np.sqrt(np.mean((eta - eta_dec)**2)) / np.sqrt(np.var(eta))
-        plt.text(100, -2.6, r'RMS/sigma = {0:1.8f}'.format(RMS_by_sig),
+        gap_indices = np.argwhere(illu==0).transpose()[0]
+        RMS_by_sig = np.sqrt(np.mean((eta[gap_indices] - eta_dec[gap_indices])**2)) / np.sqrt(np.var(eta))
+        plt.text(100, -2.6, r'RMS/$\sigma$ = {0:1.8f}'.format(RMS_by_sig),
              {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
@@ -521,11 +610,8 @@ if __name__ == '__main__':
     mean_gap_length = 8
     illu = construct_mask(N, N_gaps, mean_gap_length)    
 
-    # use deconvolution directly
-    dt = abs(t[-1]-t[-2])    
-    wmin = -np.pi/dt
-    dw = 2*np.pi/(dt*N)        
-    w = wmin + dw*np.arange(0, N)
+    # use deconvolution directly  
+    w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
     Dec = DeconvolutionSetup(w, w1, w2)      

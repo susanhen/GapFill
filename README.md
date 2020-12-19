@@ -2,7 +2,7 @@
 
 The deconvolution is a method to fill gaps in data, here implemented for the case of 1D.The deconvolution makes use of the convolution theorem and missing information is recovered in the frequency domain.
 
-![Example of gap filling applied](example.pdf)
+![Example of gap filling applied](example.png)
 
 The method requires two vectors of the same length: 
 - the data with gaps

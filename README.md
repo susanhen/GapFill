@@ -9,6 +9,7 @@ The method requires two vectors of the same length:
 # Example
 
 ![Example](example.jpg)
+
 The example shows the original signal that should be reconstructed. To generate gaps in the data series, the original was multiplied by the observation function. The deconvolution was then employed and the deconvoled signal is displayed.
 
 
@@ -20,6 +21,7 @@ https://www.sciencedirect.com/science/article/pii/S0029801820312804
 
 # Band limitation
 The method works better for larger gaps when a lower and an upper bound (w1 and w2) are set. These boundaries define the frequency band where the energy of the original signal can be expected. If the original signal is well represented by a rather narrow band, the gap filling works well for gap sizes up to half the peak Period, possibly larger. If the the energy in the original signal is spread up to high frequencies, recovery is with this method is limited. By using the Deconvolution Framework, the parameters for w1 and w2 are set to initial values and plotted. As below
+
 ![BandLimit](band_limit.jpg)
 
 
@@ -27,15 +29,16 @@ The method works better for larger gaps when a lower and an upper bound (w1 and 
 
 There are two options to apply the deconvolution:
 
-1. Deconvolution Framework
+##1. Deconvolution Framework
     The framework enables the user to feed a large dataset. This is then deconvolved on subintervals. The number of intervals can be provided to the framework. The framework automatically calculates a band limitation for which the deconvolution can be conducted. This band limitation should preferably be adapted.
     
-2. Deconvolution Setup
+##2. Deconvolution Setup
     The Deconvolution setup contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
 
 #Examples:
 
-- Creation of data (eta) :
+## Creation of data (eta) :
+```python
     # define wave
     N = 400 
     N_modes = 20
@@ -46,8 +49,10 @@ There are two options to apply the deconvolution:
     x = np.linspace(-1,5, N_modes)
     amp = rice.pdf(x, b)
     eta = np.dot(amp, np.sin(np.outer(k, t) + np.outer(phi, np.ones(len(t))) ))
+```
 
-- Definition of a mask:
+## Definition of a mask:
+```python
     def construct_mask(N, N_gaps, mean_length):
         illu = np.ones(N)
         # vary position of start indices around a uniform grid based on uniform distribution
@@ -60,9 +65,10 @@ There are two options to apply the deconvolution:
     N_gaps = 15
     mean_gap_length = 8
     illu = construct_mask(N, N_gaps, mean_gap_length)    
-
+```
    
-- Function for plotting results:        
+## Function for plotting results:   
+```python     
     def plot_comparison(eta, illu, eta_dec):
         plt.figure(figsize=(8,4))
         plt.plot(t, eta, 'k', label='original')
@@ -77,23 +83,28 @@ There are two options to apply the deconvolution:
              {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
+```
 
-- Application of the Deconvolution Framework:
+##Application of the Deconvolution Framework:
+```python
     N_intervals = 2
     dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
     dec_framework.reset_w1(0.02) 
     dec_framework.reset_w2(0.16)
     eta_dec2 = dec_framework.deconvolve()
     plot_comparison(eta, illu, eta_dec2)
+```
 
 
-- Application of the Deconvolution Setup:
+## Application of the Deconvolution Setup:
+```python
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
     Dec = DeconvolutionSetup(w, w1, w2)      
     eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
+```
 
 
 It generates a random wave. The wave is multiplied with the observation function that marks the gaps, hence gaps in the wave are replaced by zeros. The deconvolution is then applied to reconstruct the original values in the gaps. 

@@ -8,7 +8,7 @@ The method requires two vectors of the same length:
 
 # Example
 
-![Example|20%](example.jpg)
+![Example](example.jpg){ width=50% }
 
 The example shows the original signal that should be reconstructed. To generate gaps in the data series, the original was multiplied by the observation function. The deconvolution was then employed and the deconvoled signal is displayed.
 

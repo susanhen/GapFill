@@ -7,8 +7,7 @@ The method requires two vectors of the same length:
 - a marker for the gaps consisting of zeros (for gaps) and ones (otherwise)
 
 # Example
-![Example](example.jpg)
-<img src="example.jpg" width="150">
+<img src="example.jpg" width="300">
 
 The example shows the original signal that should be reconstructed. To generate gaps in the data series, the original was multiplied by the observation function. The deconvolution was then employed and the deconvoled signal is displayed.
 
@@ -22,7 +21,7 @@ https://www.sciencedirect.com/science/article/pii/S0029801820312804
 # Band limitation
 The method works better for larger gaps when a lower and an upper bound (w1 and w2) are set. These boundaries define the frequency band where the energy of the original signal can be expected. If the original signal is well represented by a rather narrow band, the gap filling works well for gap sizes up to half the peak Period, possibly larger. If the the energy in the original signal is spread up to high frequencies, recovery is with this method is limited. By using the Deconvolution Framework, the parameters for w1 and w2 are set to initial values and plotted. As below
 
-![BandLimit](band_limit.jpg)
+<img src="band_limit.jpg" width="300">
 
 
 # Implementation:

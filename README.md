@@ -29,11 +29,11 @@ The method works better for larger gaps when a lower and an upper bound (w1 and 
 
 There are two options to apply the deconvolution:
 
-## 1. Deconvolution Framework
+## 1. Gap Filling Framework
 The framework enables the user to feed a large dataset. This is then deconvolved on subintervals. The number of intervals can be provided to the framework. The framework automatically calculates a band limitation for which the deconvolution can be conducted. This band limitation should preferably be adapted.
     
-## 2. Deconvolution Setup
-The Deconvolution setup contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
+## 2. Gap Filling Core
+The Deconvolution core contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
 
 # Examples:
 
@@ -85,10 +85,10 @@ The Deconvolution setup contains the core of the deconvolution algorithm and can
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
 ```
 
-## Application of the Deconvolution Framework:
+## Application of the Gap Filling Framework:
 ```python
     N_intervals = 2
-    dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
+    dec_framework = GapFillingFramework(t, eta*illu, illu, N_intervals)
     dec_framework.reset_w1(0.02) 
     dec_framework.reset_w2(0.16)
     eta_dec2 = dec_framework.deconvolve()
@@ -96,13 +96,13 @@ The Deconvolution setup contains the core of the deconvolution algorithm and can
 ```
 
 
-## Application of the Deconvolution Setup:
+## Application of the Gap Filling Core:
 ```python
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
-    Dec = DeconvolutionSetup(w, w1, w2)      
-    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
+    Dec = GapFillingCore(w, w1, w2)      
+    eta_dec = Dec.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
 ```
 

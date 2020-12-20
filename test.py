@@ -2,10 +2,10 @@
 
 import unittest
 import numpy as np
-from deconvolution import GapFillingSetup, GapFillingFramework
+from deconvolution import GapFillingCore, GapFillingFramework
 
 
-class TestGapFillingSetup(unittest.TestCase):
+class TestGapFillingCore(unittest.TestCase):
 
     def setUp(self):
         self.N = 100
@@ -16,14 +16,14 @@ class TestGapFillingSetup(unittest.TestCase):
         self.w = wmin + dw*np.arange(0, self.N)
         self.w1 = 0.03
         self.w2 = 0.2
-        self.dec_set = GapFillingSetup(self.w, self.w1, self.w2)
+        self.dec_core = GapFillingCore(self.w, self.w1, self.w2)
         
     def test_convolution(self):
         a = np.sign(np.sin(self.t*10))
         b = np.cos(self.t)
         fft_a = np.fft.fftshift(np.fft.fft(a))/self.N
         fft_b = np.fft.fftshift(np.fft.fft(b))/self.N
-        A = self.dec_set.build_convolution_matrix(a)
+        A = self.dec_core.build_convolution_matrix(a)
         matrix_convolution = np.flipud(np.dot(A, np.flipud(fft_b)))
         
         N_half = int(0.5*self.N)
@@ -39,7 +39,7 @@ class TestGapFillingSetup(unittest.TestCase):
         RMS_expected = 0.008411               
         b = np.cos(0.05*self.t) + 0.2*np.cos(0.07*self.t+0.3*np.pi)   
         b -= np.mean(b)     
-        b_dec = self.dec_set.deconvolve(b, a)
+        b_dec = self.dec_core.deconvolve(b, a)
         diff = np.abs(b[ind1:ind2] - b_dec[ind1:ind2])**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         self.assertEqual(RMS, RMS_expected)    
@@ -52,7 +52,7 @@ class TestGapFillingSetup(unittest.TestCase):
         RMS_expected = 0.008411
         b = np.cos(0.05*self.t) + 0.2*np.cos(0.07*self.t+0.3*np.pi)   
         b -= np.mean(b)     
-        b_dec = self.dec_set.deconvolve_non_symmetric(b, a)
+        b_dec = self.dec_core.deconvolve_non_symmetric(b, a)
         diff = np.abs(b[ind1:ind2] - b_dec[ind1:ind2])**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         self.assertEqual(RMS, RMS_expected)

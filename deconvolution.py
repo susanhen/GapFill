@@ -23,8 +23,8 @@ There are two options to apply the deconvolution:
 1. Gap Filling Framework
     The framework enables the user to feed a large dataset. This is then deconvolved on subintervals. The number of intervals can be provided to the framework. The framework automatically calculates a band limitation for which the deconvolution can be conducted. This band limitation should preferably be adapted.
     
-2. Gap Filling Setup
-    The Deconvolution setup contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
+2. Gap Filling Core
+    The Deconvolution core contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
 
 Examples:
 ---------
@@ -80,11 +80,11 @@ Application of the Gap Filling Framework:
     plot_comparison(eta, illu, eta_dec2)
 
 
-Application of the Gap Filling Setup:
+Application of the Gap Filling Core:
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
-    Dec = GapFillingSetup(w, w1, w2)      
+    Dec = GapFillingCore(w, w1, w2)      
     eta_dec = Dec.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
 """
@@ -92,7 +92,7 @@ Application of the Gap Filling Setup:
 
 __all__ = [ 'grid2spectral', 
             'suggest_band_limitation', 
-            'GapFillingSetup',
+            'GapFillingCore',
             'GapFillingFramework']
 
 import numpy as np
@@ -157,11 +157,11 @@ def suggest_band_limitation(t, y, mask, plot_it):
         plt.text(w[ind2], 1.05, r'$\omega_2$', {'color': 'k', 'fontsize': 14})        
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$S/S_p(\omega)$')
-        plt.savefig('band_limit.jpg', bbox_inches='tight', dpi=100)
+        plt.savefig('band_limit.jpg', bbox_inches='tight', dpi=300)
         plt.show()
     return w[ind1], w[ind2]
     
-class GapFillingSetup:
+class GapFillingCore:
     """
     A class to perform the deconvolution as interpolation
 
@@ -522,20 +522,20 @@ class GapFillingFramework:
         t_local = self.t[0: self.N_per_interval]
         w_local = grid2spectral(t_local)        
         y_dec = np.zeros(self.N)
-        dec_setup = GapFillingSetup(w_local, self.w1, self.w2, w0, method)
+        gap_filling_core = GapFillingCore(w_local, self.w1, self.w2, w0, method)
         ind = self.N_per_interval//4
         
         # deconvolve first set of intervals
         for i in range(0, len(self.start_points1)):
             y_local = self.y[self.start_points1[i]: self.end_points1[i]]
             m_local = self.m[self.start_points1[i]: self.end_points1[i]]
-            y_dec[self.start_points1[i]:self.end_points1[i]] = dec_setup.deconvolve(y_local, m_local, plot_spec, replace_all)
+            y_dec[self.start_points1[i]:self.end_points1[i]] = gap_filling_core.deconvolve(y_local, m_local, plot_spec, replace_all)
             
         # deconvolve second set of intervals
         for i in range(0,len(self.start_points2)):
             y_local = self.y[self.start_points2[i]: self.end_points2[i]]
             m_local = self.m[self.start_points2[i]: self.end_points2[i]]
-            dec_hold = dec_setup.deconvolve(y_local, m_local, plot_spec, replace_all)
+            dec_hold = gap_filling_core.deconvolve(y_local, m_local, plot_spec, replace_all)
             N_replace = self.end_replace[i]-self.start_replace[i]
             y_dec[self.start_replace[i]:self.end_replace[i]] = dec_hold[ind:ind+N_replace]
         
@@ -593,7 +593,7 @@ if __name__ == '__main__':
              {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
-        plt.savefig('example.jpg', bbox_inches='tight', dpi=100)
+        plt.savefig('example.jpg', bbox_inches='tight', dpi=300)
 
 
     # define wave
@@ -616,8 +616,8 @@ if __name__ == '__main__':
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
-    Dec = GapFillingSetup(w, w1, w2)      
-    eta_dec = Dec.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
+    gap_filling_core = GapFillingCore(w, w1, w2)      
+    eta_dec = gap_filling_core.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
     
     # Use GapFillingFramework

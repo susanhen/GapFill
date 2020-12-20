@@ -1,5 +1,5 @@
 """
-module for gap filling by deconvolution - gapFill.py
+module for gap filling by deconvolution - gap filling.py
 
 This module provides functionality to remove gaps in 1D data by deconvolution.
 

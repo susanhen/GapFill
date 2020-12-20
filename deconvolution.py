@@ -157,7 +157,6 @@ def suggest_band_limitation(t, y, mask, plot_it):
         plt.text(w[ind2], 1.05, r'$\omega_2$', {'color': 'k', 'fontsize': 14})        
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$S/S_p(\omega)$')
-        plt.savefig('band_limit.jpg', bbox_inches='tight', dpi=300)
         plt.show()
     return w[ind1], w[ind2]
     
@@ -593,7 +592,6 @@ if __name__ == '__main__':
              {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
-        plt.savefig('example.jpg', bbox_inches='tight', dpi=300)
 
 
     # define wave

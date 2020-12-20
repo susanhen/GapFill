@@ -2,10 +2,10 @@
 
 import unittest
 import numpy as np
-from deconvolution import DeconvolutionSetup, DeconvolutionFramework
+from deconvolution import GapFillingSetup, GapFillingFramework
 
 
-class TestDeconvolution(unittest.TestCase):
+class TestGapFillingSetup(unittest.TestCase):
 
     def setUp(self):
         self.N = 100
@@ -16,7 +16,7 @@ class TestDeconvolution(unittest.TestCase):
         self.w = wmin + dw*np.arange(0, self.N)
         self.w1 = 0.03
         self.w2 = 0.2
-        self.dec_set = DeconvolutionSetup(self.w, self.w1, self.w2)
+        self.dec_set = GapFillingSetup(self.w, self.w1, self.w2)
         
     def test_convolution(self):
         a = np.sign(np.sin(self.t*10))
@@ -39,7 +39,7 @@ class TestDeconvolution(unittest.TestCase):
         RMS_expected = 0.008411               
         b = np.cos(0.05*self.t) + 0.2*np.cos(0.07*self.t+0.3*np.pi)   
         b -= np.mean(b)     
-        b_dec = self.dec_set.interpolate(b, a)
+        b_dec = self.dec_set.deconvolve(b, a)
         diff = np.abs(b[ind1:ind2] - b_dec[ind1:ind2])**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         self.assertEqual(RMS, RMS_expected)    
@@ -52,13 +52,13 @@ class TestDeconvolution(unittest.TestCase):
         RMS_expected = 0.008411
         b = np.cos(0.05*self.t) + 0.2*np.cos(0.07*self.t+0.3*np.pi)   
         b -= np.mean(b)     
-        b_dec = self.dec_set.interpolate_non_symmetric(b, a)
+        b_dec = self.dec_set.deconvolve_non_symmetric(b, a)
         diff = np.abs(b[ind1:ind2] - b_dec[ind1:ind2])**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         self.assertEqual(RMS, RMS_expected)
 
 
-class TestDeconvolutionFramework(unittest.TestCase): 
+class TestGapFillingFramework(unittest.TestCase): 
  
     def setUp(self):  
         self.N = 200
@@ -73,34 +73,34 @@ class TestDeconvolutionFramework(unittest.TestCase):
         ind2 = int(0.52*self.N)
         self.m[ind1:ind2] = 0
         self.N_intervals = 2
-        self.dec_framework = DeconvolutionFramework(self.t, self.y*self.m, self.m, self.N_intervals, plot_it=False)    
+        self.gap_fill_fw = GapFillingFramework(self.t, self.y*self.m, self.m, self.N_intervals, plot_it=False)    
         
     def test_data_chopping(self):
-        N_int = self.dec_framework.N_intervals
-        N_per_int = self.dec_framework.N_per_interval
+        N_int = self.gap_fill_fw.N_intervals
+        N_per_int = self.gap_fill_fw.N_per_interval
         start1_compare = 0
         start2_compare = N_per_int//2
         for i in range(0, N_int-1):         
-            start1 = self.dec_framework.start_points1[i]
+            start1 = self.gap_fill_fw.start_points1[i]
             self.assertEqual(start1, start1_compare)
             start1_compare += N_per_int
-            end1 = self.dec_framework.end_points1[i]
+            end1 = self.gap_fill_fw.end_points1[i]
             self.assertEqual(start1_compare, end1)
                      
-            start2 = self.dec_framework.start_points2[i]            
+            start2 = self.gap_fill_fw.start_points2[i]            
             self.assertEqual(start2, start2_compare)
             start2_compare += N_per_int
-            end2 = self.dec_framework.end_points2[i]
+            end2 = self.gap_fill_fw.end_points2[i]
             self.assertEqual(start2_compare, end2)            
                     
-        start1 = self.dec_framework.start_points1[-1]
+        start1 = self.gap_fill_fw.start_points1[-1]
         self.assertEqual(start1, start1_compare)
         start1_compare += N_per_int
-        end1 = self.dec_framework.end_points1[-1]
+        end1 = self.gap_fill_fw.end_points1[-1]
         self.assertEqual(start1_compare, end1)
         
     def test_deconvolution(self):
-        dec = self.dec_framework.deconvolve()
+        dec = self.gap_fill_fw.deconvolve()
         diff = np.abs(dec - self.y)**2
         RMS = np.round(np.sqrt(np.mean(diff)), 6)
         RMS_expected = 0.005964

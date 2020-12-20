@@ -1,5 +1,5 @@
 """
-Object for dealing with deconvolution - deconvolution.py
+module for gap filling by deconvolution - gapFill.py
 
 This module provides functionality to remove gaps in 1D data by deconvolution.
 
@@ -20,10 +20,10 @@ Implementation:
 ---------------
 There are two options to apply the deconvolution:
 
-1. Deconvolution Framework
+1. Gap Filling Framework
     The framework enables the user to feed a large dataset. This is then deconvolved on subintervals. The number of intervals can be provided to the framework. The framework automatically calculates a band limitation for which the deconvolution can be conducted. This band limitation should preferably be adapted.
     
-2. Deconvolution Setup
+2. Gap Filling Setup
     The Deconvolution setup contains the core of the deconvolution algorithm and can be used directly. It deconvolves the provided data in one step and requires the definition of w1 and w2 as boundaries for the non-zero frequency band [w1;w2].
 
 Examples:
@@ -71,29 +71,29 @@ Function for plotting results:
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
 
-Application of the Deconvolution Framework:
+Application of the Gap Filling Framework:
     N_intervals = 2
-    dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
+    dec_framework = GapFillingFramework(t, eta*illu, illu, N_intervals)
     dec_framework.reset_w1(0.02) 
     dec_framework.reset_w2(0.16)
     eta_dec2 = dec_framework.deconvolve()
     plot_comparison(eta, illu, eta_dec2)
 
 
-Application of the Deconvolution Setup:
+Application of the Gap Filling Setup:
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
-    Dec = DeconvolutionSetup(w, w1, w2)      
-    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
+    Dec = GapFillingSetup(w, w1, w2)      
+    eta_dec = Dec.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
 """
 # Created by Susane Stole-Hentschel, December, 2020
 
 __all__ = [ 'grid2spectral', 
             'suggest_band_limitation', 
-            'DeconvolutionSetup',
-            'DeconvolutionFramework']
+            'GapFillingSetup',
+            'GapFillingFramework']
 
 import numpy as np
 from scipy.linalg import toeplitz
@@ -157,10 +157,11 @@ def suggest_band_limitation(t, y, mask, plot_it):
         plt.text(w[ind2], 1.05, r'$\omega_2$', {'color': 'k', 'fontsize': 14})        
         plt.xlabel(r'$\omega$')
         plt.ylabel(r'$S/S_p(\omega)$')
+        plt.savefig('band_limit.jpg', bbox_inches='tight', dpi=100)
         plt.show()
     return w[ind1], w[ind2]
     
-class DeconvolutionSetup:
+class GapFillingSetup:
     """
     A class to perform the deconvolution as interpolation
 
@@ -187,10 +188,10 @@ class DeconvolutionSetup:
     -------
     build_convolution_matrix(illu)
         forms the convolution matrix for the observation function illu
-    direct_interpolate(self, eta_shad, illu, plot_spec=False, replace_all=False)
-        interpolates the missing points directly without reducing the matrix
-    interpolate(self, eta_shad, illu, plot_spec=False, replace_all=False)
-        interpolates the missing points by reducing the matrix
+    direct_deconvolve(self, eta_shad, illu, plot_spec=False, replace_all=False)
+        deconvolves the missing points directly without reducing the matrix
+    deconvolve(self, eta_shad, illu, plot_spec=False, replace_all=False)
+        deconvolves the missing points by reducing the matrix
     """
 
     def __init__(self, w, w1, w2, w0=False, method='solve'):   
@@ -277,7 +278,7 @@ class DeconvolutionSetup:
         pylab.legend()
         pylab.show()
     
-    def direct_interpolate(self, eta_shad, illu, plot_spec=False, replace_all=False):    
+    def direct_deconvolve(self, eta_shad, illu, plot_spec=False, replace_all=False):    
         """
         Conducts interpolation by deconvolution directly (without 
         manipulating the convolution matrix). The method is only
@@ -311,7 +312,7 @@ class DeconvolutionSetup:
         return eta_out
         
         
-    def interpolate(self, eta_shad, illu, plot_spec=False, replace_all=False):  
+    def deconvolve(self, eta_shad, illu, plot_spec=False, replace_all=False):  
         """
         Standard method for interpolation by deconvolution. The matrix is reduced
         by assuming that only the coefficients corresponding to the frequency
@@ -367,10 +368,10 @@ class DeconvolutionSetup:
         return eta_out
 
 
-    def interpolate_non_symmetric(self, eta_shad, illu, plot_spec=False, replace_all=False):  
+    def deconvolve_non_symmetric(self, eta_shad, illu, plot_spec=False, replace_all=False):  
         """
-        The method is similar to interpolate but does not exploit the conjugate symmetry.
-        The results of both methods should normally be identical but interpolate should be faster.
+        The method is similar to deconvolve but does not exploit the conjugate symmetry.
+        The results of both methods should normally be identical but deconvolve should be faster.
         
         ...
         
@@ -413,7 +414,7 @@ class DeconvolutionSetup:
         return eta_out
 
 
-class DeconvolutionFramework:
+class GapFillingFramework:
     '''
     Class to organize data for deconvolution.
     The deconvolution for large datasets should be preformed on chunks.
@@ -521,20 +522,20 @@ class DeconvolutionFramework:
         t_local = self.t[0: self.N_per_interval]
         w_local = grid2spectral(t_local)        
         y_dec = np.zeros(self.N)
-        dec_setup = DeconvolutionSetup(w_local, self.w1, self.w2, w0, method)
+        dec_setup = GapFillingSetup(w_local, self.w1, self.w2, w0, method)
         ind = self.N_per_interval//4
         
         # deconvolve first set of intervals
         for i in range(0, len(self.start_points1)):
             y_local = self.y[self.start_points1[i]: self.end_points1[i]]
             m_local = self.m[self.start_points1[i]: self.end_points1[i]]
-            y_dec[self.start_points1[i]:self.end_points1[i]] = dec_setup.interpolate(y_local, m_local, plot_spec, replace_all)
+            y_dec[self.start_points1[i]:self.end_points1[i]] = dec_setup.deconvolve(y_local, m_local, plot_spec, replace_all)
             
         # deconvolve second set of intervals
         for i in range(0,len(self.start_points2)):
             y_local = self.y[self.start_points2[i]: self.end_points2[i]]
             m_local = self.m[self.start_points2[i]: self.end_points2[i]]
-            dec_hold = dec_setup.interpolate(y_local, m_local, plot_spec, replace_all)
+            dec_hold = dec_setup.deconvolve(y_local, m_local, plot_spec, replace_all)
             N_replace = self.end_replace[i]-self.start_replace[i]
             y_dec[self.start_replace[i]:self.end_replace[i]] = dec_hold[ind:ind+N_replace]
         
@@ -592,6 +593,7 @@ if __name__ == '__main__':
              {'color': 'black', 'fontsize': 12, 'ha': 'left', 'va': 'center',
               'bbox': dict(boxstyle="round", fc="white", ec="black", pad=0.2)})
         plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,  ncol=4, mode="expand", borderaxespad=0.)
+        plt.savefig('example.jpg', bbox_inches='tight', dpi=100)
 
 
     # define wave
@@ -614,13 +616,13 @@ if __name__ == '__main__':
     w = grid2spectral(t)
     w1 = 0.02
     w2 = 0.16
-    Dec = DeconvolutionSetup(w, w1, w2)      
-    eta_dec = Dec.interpolate(eta*illu, illu, replace_all=True, plot_spec=False)
+    Dec = GapFillingSetup(w, w1, w2)      
+    eta_dec = Dec.deconvolve(eta*illu, illu, replace_all=True, plot_spec=False)
     plot_comparison(eta, illu, eta_dec)
     
-    # Use DeconvolutionFramework
+    # Use GapFillingFramework
     N_intervals = 2
-    dec_framework = DeconvolutionFramework(t, eta*illu, illu, N_intervals)
+    dec_framework = GapFillingFramework(t, eta*illu, illu, N_intervals)
     dec_framework.reset_w1(0.02) 
     dec_framework.reset_w2(0.16)
     eta_dec2 = dec_framework.deconvolve()
